@@ -2,6 +2,7 @@ from abc import ABC
 from typing import Optional, Dict
 
 import boto3
+import magic
 from requests import Timeout, ConnectTimeout
 from rest_framework import status
 
@@ -131,21 +132,33 @@ class FileUploadBase:
 
 class FileUploadProcessor(FileUploadBase):
 
-    def upload_file(self, key, fileobj):
-        return self._s3_client.upload_body_data(self.bucket_name, key, fileobj)
+    def upload_file(self, key, fileobj, **kwargs):
+        kwargs.update(self._set_content_type_if_needed(fileobj))
+        return self._s3_client.upload_body_data(self.bucket_name, key, fileobj, **kwargs)
+
+    def _set_content_type_if_needed(self, fileobj) -> dict:
+        mime_service = magic.Magic(mime=True, uncompress=True)
+        mimetype = mime_service.from_buffer(fileobj.read(2048))
+        fileobj.seek(0)
+
+        if mimetype.startswith('image'):
+            return {'ContentType': mimetype}
+
+        return {}
 
 
 class FileUploader:
     def upload_file(self, fileobj, key):
         file_upload_processor = FileUploadProcessor()
-        file_upload_processor.upload_file(key, fileobj)
+        return file_upload_processor.upload_file(key, fileobj)
 
-    def upload_file_from_path(self, file_path):
+    def upload_file_from_path(self, file_path) -> str:
         file_name = file_path.split('/')[-1]
 
         try:
             with open(file_path, "rb") as fileobj:
                 self.upload_file(fileobj, file_name)
+                return file_name
         except (Timeout, ConnectTimeout, ConnectionError):
             raise FileUploadError(
                 'Upload file error.', status.HTTP_500_INTERNAL_SERVER_ERROR

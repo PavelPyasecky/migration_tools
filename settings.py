@@ -1,6 +1,7 @@
 import os
 
 FILE_UPLOAD_BUCKET_NAME = 'chashaby'
+AWS_S3_URL = 'https://{bucket_name}.s3.eu-central-1.amazonaws.com/{file_name}'
 
 AWS_REGION = 'eu-central-1'
 

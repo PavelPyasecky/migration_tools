@@ -10,7 +10,7 @@ def stored_property(method):
     Example without and with 'stored_property' decorator:
 
         import time
-        from sfapi.decorators import stored_property
+        from utils import stored_property
 
 
         class SleepProperty(object):
