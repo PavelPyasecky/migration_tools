@@ -90,3 +90,6 @@ db.sqlite3
 
 # PyCharm
 .idea/
+
+# Assets Folder
+/images

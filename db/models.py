@@ -48,7 +48,8 @@ class NewsContent:
     updated_date = mapped_column(DateTime)
     updated_by_id = mapped_column(Integer)
     view_data = mapped_column(JSON)
-    main_image = mapped_column(String(100))
+    main_asset_id = mapped_column(ForeignKey('assets.asset_id'), nullable=True)
+    main_asset = relationship('Assets')
 
     assets = relationship(Assets, secondary=NewsContentAssets,
                           primaryjoin=(NewsContentAssets.c.news_content_id == news_content_id),

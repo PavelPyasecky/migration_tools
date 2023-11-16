@@ -52,3 +52,11 @@ class ParseTextFromHtmlService:
         link_urls = self._get_source_of_url_tag('a')
         youtube_pattern = re.compile(self.youtube_urls_pattern)
         return [link for link in link_urls if youtube_pattern.search(link)]
+
+
+class ParseAbsoluteToDomesticUrlService:
+    absolute_url_pattern = r'^http:\/\/chasha.by\/(.+)$'
+
+    def parse_url(self, img_url) -> str:
+        url_pattern = re.compile(self.absolute_url_pattern)
+        return url_pattern.search(img_url)[1] if img_url else ''
