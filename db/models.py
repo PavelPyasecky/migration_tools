@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from sqlalchemy import String, Integer, ForeignKey, DateTime, Table, Column
 from sqlalchemy.dialects.mysql import MEDIUMTEXT, JSON
 from sqlalchemy.orm import mapped_column, registry, relationship, DeclarativeBase
@@ -26,9 +28,9 @@ class Assets:
     asset_id = mapped_column(Integer, primary_key=True)
     file_name = mapped_column(String(500))
 
-    created_date = mapped_column(DateTime)
+    created_date = mapped_column(DateTime, default=datetime.utcnow)
     created_by_id = mapped_column(Integer)
-    updated_date = mapped_column(DateTime)
+    updated_date = mapped_column(DateTime, default=datetime.utcnow)
     updated_by_id = mapped_column(Integer)
 
     def __repr__(self) -> str:
@@ -43,9 +45,9 @@ class NewsContent:
     title = mapped_column(String(255))
     text = mapped_column(MEDIUMTEXT)
 
-    created_date = mapped_column(DateTime)
+    created_date = mapped_column(DateTime, default=datetime.utcnow)
     created_by_id = mapped_column(Integer)
-    updated_date = mapped_column(DateTime)
+    updated_date = mapped_column(DateTime, default=datetime.utcnow)
     updated_by_id = mapped_column(Integer)
     view_data = mapped_column(JSON)
     main_asset_id = mapped_column(ForeignKey('assets.asset_id'), nullable=True)
