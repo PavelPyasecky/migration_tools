@@ -8,80 +8,30 @@ from db import models
 from services.file_uploader import FileUploader
 from services.parsers import ParseTextFromHtmlService, ParseAbsoluteToDomesticUrlService
 
+
 engine = create_engine(settings.DB_CONNECTION_STRING, echo=True)
 session = Session(engine)
 
+DEBUG_MODE = True
+TEST_DEFAULT_AFFECTED_ROW_COUNT = 2
 
-class DatabaseHandler:
-    DEFAULT_USER_ID = 1
 
-    TEST_DEFAULT_AFFECTED_ROW_COUNT = 2
-
+class SessionMixin:
     def __init__(self, current_session):
         self.session = current_session
 
-    def handle(self):
-        self._delete_duplicated_news_or_extra_staff()
-        news_contents = self._get_news_content_list()
-        for news_content in news_contents:
-            parse_service = ParseTextFromHtmlService(news_content.text)
-            self._extract_main_img_url_into_news_content_main_image(news_content, parse_service)
-        self.session.commit()
 
-        self._clean_view_data_field()
+class NewsContentAssetsService(SessionMixin):
+    def create_reference_between_news_and_assets(self, news_content_id, asset_id):
+        news_content_asset_stmt = insert(models.NewsContentAssets).values(news_content_id=news_content_id,
+                                                                          asset_id=asset_id)
+        return self.session.execute(news_content_asset_stmt)
 
-        for news_content in news_contents:
-            parse_service = ParseTextFromHtmlService(news_content.text)
 
-            news_content = self._extract_text_news_content_text(news_content, parse_service)
-            if not news_content.assets:
-                self._extract_image_urls_into_assets(news_content, parse_service)
-                self._extract_youtube_urls_into_news_content_view_data(news_content, parse_service)
-        self.session.commit()
+class AssetsService(NewsContentAssetsService):
+    DEFAULT_USER_ID = 1
 
-    def _delete_duplicated_news_or_extra_staff(self):
-        news_content_stmt = delete(models.NewsContent).where(models.NewsContent.text == '')
-        self.session.execute(news_content_stmt)
-
-    def _clean_view_data_field(self):
-        #TODO remove 'limit()' for production
-        news_content_stmt = update(models.NewsContent).values(view_data=None).where(
-            models.NewsContent.news_content_id.in_([322, 320]))
-
-        self.session.execute(news_content_stmt)
-
-    def _get_news_content_list(self):
-        news_content_stmt = select(models.NewsContent).order_by(models.NewsContent.news_content_id.desc()).limit(
-            self.TEST_DEFAULT_AFFECTED_ROW_COUNT)  # TODO remove 'limit()' for production
-        return self.session.scalars(news_content_stmt).all()
-
-    def _extract_text_news_content_text(self, news_content, parse_service):
-        news_content.text = parse_service.parse_text()
-        news_content.updated_date = datetime.utcnow()
-        return news_content
-
-    def _extract_image_urls_into_assets(self, news_content, parse_service):
-        image_urls = parse_service.parse_image_urls()
-        file_name = image_urls.split('/')[-1]
-
-        for image_path in image_urls:
-            asset = self._get_asset_by_file_name(file_name)
-            if asset:
-                news_content_asset_stmt = insert(models.NewsContentAssets).values(
-                    news_content_id=news_content.news_content_id,
-                    asset_id=asset.asset_id)
-                self.session.execute(news_content_asset_stmt)
-            else:
-                file_name = self._upload_file_by_file_path(image_path)
-                self._create_assets_by_img_url(news_content.news_content_id, file_name)
-
-    @staticmethod
-    def _upload_file_by_file_path(file_path):
-        file_upload_service = FileUploader()
-        file_name = file_upload_service.upload_file_from_path(file_path)
-        return file_name
-
-    def _create_assets_by_img_url(self, news_content_id, file_name):
+    def create_asset(self, news_content_id, file_name):
         asset_insert_stmt = insert(models.Assets).values(file_name=file_name, created_by_id=self.DEFAULT_USER_ID,
                                                          updated_by_id=self.DEFAULT_USER_ID)
         self.session.execute(asset_insert_stmt)
@@ -89,41 +39,121 @@ class DatabaseHandler:
         asset_select_stmt = select(models.Assets).order_by(models.Assets.asset_id.desc())
         asset = self.session.scalar(asset_select_stmt)
 
-        news_content_asset_stmt = insert(models.NewsContentAssets).values(news_content_id=news_content_id,
-                                                                          asset_id=asset.asset_id)
-        self.session.execute(news_content_asset_stmt)   #TODO return created instances if posible
+        self.create_reference_between_news_and_assets(news_content_id, asset.asset_id)
 
-    @staticmethod
-    def _extract_youtube_urls_into_news_content_view_data(news_content, parse_service):
-        youtube_urls = parse_service.parse_youtube_urls()
-        new_view_data = news_content.view_data if news_content.view_data else {}
-        news_content.view_data = new_view_data['youtube'] = youtube_urls
-        news_content.updated_date = datetime.utcnow()
-        return news_content
+    def get_asset_by_file_name(self, file_name):
+        assets_stmt = select(models.Assets).where(models.Assets.file_name == f'{file_name}')
+        return self.session.scalars(assets_stmt).first()
 
-    def _extract_main_img_url_into_news_content_main_image(self, news_content, parse_service):
+
+class NewsContentService(SessionMixin):
+    def clean_view_data_field(self):
+        if DEBUG_MODE:
+            return self._DEBUG_clean_view_data_field()
+
+        news_content_stmt = update(models.NewsContent).values(view_data=None)
+        self.session.execute(news_content_stmt)
+
+    def _DEBUG_clean_view_data_field(self):
+        news_content_select_stmt = select(models.NewsContent.news_content_id).order_by(
+            models.NewsContent.news_content_id.desc()).limit(TEST_DEFAULT_AFFECTED_ROW_COUNT)
+        news_content_ids = self.session.scalars(news_content_select_stmt).all()
+
+        news_content_stmt = update(models.NewsContent).values(view_data=None).where(
+            models.NewsContent.news_content_id.in_(news_content_ids))
+        self.session.execute(news_content_stmt)
+
+    def get_news_contents(self):
+        if DEBUG_MODE:
+            return self._DEBUG_get_news_contents()
+
+        news_content_stmt = select(models.NewsContent).order_by(models.NewsContent.news_content_id.desc())
+        return self.session.scalars(news_content_stmt).all()
+
+    def _DEBUG_get_news_contents(self):
+        news_content_stmt = select(models.NewsContent).order_by(models.NewsContent.news_content_id.desc()).limit(
+            TEST_DEFAULT_AFFECTED_ROW_COUNT)
+        return self.session.scalars(news_content_stmt).all()
+
+
+class DbPreparingService(SessionMixin):
+    def prepare_db_data(self):
+        self._delete_duplicated_news_or_extra_staff()
+        news_service = NewsContentService(self.session)
+
+        for news_content in news_service.get_news_contents():
+            self._extract_main_img_url_into_news_content(news_content)
+        self.session.commit()
+
+        news_service.clean_view_data_field()
+
+    def _delete_duplicated_news_or_extra_staff(self):
+        news_content_stmt = delete(models.NewsContent).where(models.NewsContent.text == '')
+        self.session.execute(news_content_stmt)
+
+    def _extract_main_img_url_into_news_content(self, news_content):
         absolute_main_image_url = news_content.view_data.get('image_intro', None) if news_content.view_data else None
 
         if not absolute_main_image_url:
             return news_content
 
-        url_server = ParseAbsoluteToDomesticUrlService()
-        image_path = url_server.parse_url(absolute_main_image_url)
+        image_path = ParseAbsoluteToDomesticUrlService().parse_url(absolute_main_image_url)
         file_name = image_path.split('/')[-1]
 
-        asset = self._get_asset_by_file_name(file_name)
+        asset = AssetsService(self.session).get_asset_by_file_name(file_name)
         if asset:
             news_content.main_asset_id = asset.asset_id
             news_content.updated_date = datetime.utcnow()
         else:
-            self._upload_file_by_file_path(image_path)
-            self._create_assets_by_img_url(news_content.news_content_id, file_name)
+            FileUploader().upload_file_from_path(image_path)
+            AssetsService(self.session).create_asset(news_content.news_content_id, file_name)
 
         return news_content
 
-    def _get_asset_by_file_name(self, file_name):
-        assets_stmt = select(models.Assets).where(models.Assets.file_name == f'{file_name}')
-        return self.session.scalars(assets_stmt).first()
+
+class DbDataModifier(SessionMixin):
+    DEFAULT_USER_ID = 1
+    TEST_DEFAULT_AFFECTED_ROW_COUNT = 2
+
+    def process_db(self):
+        DbPreparingService(self.session).prepare_db_data()
+        self._modify_db_data()
+
+    def _modify_db_data(self):
+        for news_content in NewsContentService(self.session).get_news_contents():
+            parse_service = ParseTextFromHtmlService(news_content.text)
+            news_content.text = parse_service.parse_text()
+
+            if not news_content.assets:
+                image_urls = parse_service.parse_image_urls()
+                self._extract_image_urls_into_assets(news_content, image_urls)
+
+                youtube_urls = parse_service.parse_youtube_urls()
+                news_content = self._extract_youtube_urls_into_news_content_view_data(news_content, youtube_urls)
+
+            news_content.updated_date = datetime.utcnow()
+        self.session.commit()
+
+    def _extract_image_urls_into_assets(self, news_content, image_urls):
+        for image_path in image_urls:
+            file_name = image_path.split('/')[-1]
+            asset_service = AssetsService(self.session)
+            asset = asset_service.get_asset_by_file_name(file_name)
+
+            if asset:
+                asset_service.create_reference_between_news_and_assets(
+                    news_content.news_content_id, asset.asset_id)
+            else:
+                file_name = FileUploader().upload_file_from_path(image_path)
+                asset_service.create_asset(news_content.news_content_id, file_name)
+
+    @staticmethod
+    def _extract_youtube_urls_into_news_content_view_data(news_content, youtube_urls):
+        if not news_content.view_data:
+            news_content.view_data = {}
+
+        news_content.view_data.update({'youtube': youtube_urls})
+        return news_content
 
 
-DatabaseHandler(session).handle()
+DbDataModifier(session).process_db()
