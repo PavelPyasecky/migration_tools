@@ -1,10 +1,11 @@
+import logging
 from abc import ABC
 from typing import Optional, Dict
+from urllib.parse import unquote
 
 import boto3
 import magic
 from requests import Timeout, ConnectTimeout
-from rest_framework import status
 
 import settings
 
@@ -12,6 +13,9 @@ from botocore.exceptions import ClientError
 from io import BytesIO
 
 from utils import stored_property
+
+
+logger = logging.getLogger(__name__)
 
 
 class ObjectKeyNotFound(Exception):
@@ -153,13 +157,21 @@ class FileUploader:
         return file_upload_processor.upload_file(key, fileobj)
 
     def upload_file_from_path(self, file_path) -> str:
-        file_name = file_path.split('/')[-1]
+        file_name = self.get_file_name_by_path(file_path)
 
         try:
             with open(file_path, "rb") as fileobj:
                 self.upload_file(fileobj, file_name)
                 return file_name
-        except (Timeout, ConnectTimeout, ConnectionError):
-            raise FileUploadError(
-                'Upload file error.', status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+
+        except (Timeout, ConnectTimeout, ConnectionError) as e:
+            logger.error(f'Upload file error: {e}')
+            return ''
+
+        except FileNotFoundError as e:
+            logger.error(f'File is not found: {e}')
+            return ''
+
+    @staticmethod
+    def get_file_name_by_path(path):
+        return unquote(path.split('/')[-1])

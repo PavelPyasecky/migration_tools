@@ -93,3 +93,6 @@ db.sqlite3
 
 # Assets Folder
 /images
+
+# unittest
+.pytest_cache

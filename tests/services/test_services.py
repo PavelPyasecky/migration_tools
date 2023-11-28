@@ -1,7 +1,8 @@
 import unittest
 
-from services.parsers import ParseTextFromHtmlService
+from services.parsers import ParseTextFromHtmlService, ParseAbsoluteToDomesticUrlService
 from tests.services import mocks
+from tests.services.mocks import TEST_PARSE_ABSOLUTE_TO_DOMESTIC_URL_SERVICE
 
 
 class TestParseTextFromHtmlService(unittest.TestCase):
@@ -18,7 +19,7 @@ Combating Drug Addiction and Alcoholism in honor of Martyr. Boniface of Archprie
 Colonel Dmitry Yatsuk, Private Yulia Suraga took 3rd place. All participants and winners of the tournament were \
 awarded diplomas and memorable gifts. The organizers and management of the Polotsk Cadet School expressed words \
 of gratitude to the command of the Military Academy and the Belarusian Orthodox Church for participation in the \
-tournament. Photos and videos from the event"""
+tournament. Photos and videos from the event """
 
     TEST_PARSED_URL_LIST = [
         'images/novosti/2023_The_combined_team_of_the_Minsk_diocese_of_the_BOC_and_the_Military_Academy_\
@@ -31,6 +32,7 @@ of_the_Republic_of_Belarus_took_part_in_the_Open_Tournament/photo_2023-03-26_21-
 
     TEST_PARSED_YOUTUBE_URL_LIST = [
         'https://youtu.be/IeODSXm4s_E',
+        'https://www.youtube.com/watch?v=IeODSXm4s_EWd',
     ]
 
     def setUp(self):
@@ -56,3 +58,16 @@ of_the_Republic_of_Belarus_took_part_in_the_Open_Tournament/photo_2023-03-26_21-
         image_urls = self.parser.parse_youtube_urls()
 
         self.assertEqual(image_urls, self.TEST_PARSED_YOUTUBE_URL_LIST)
+
+
+class TestParseAbsoluteToDomesticUrlService(unittest.TestCase):
+    service = ParseAbsoluteToDomesticUrlService
+
+    TEST_PARSED_ABSOLUTE_TO_DOMESTIC_URL_SERVICE = [
+        "images/novosti/2023_The_combined_team_of_the_Minsk_diocese_of_the_BOC_and_the_Military_Academy_of_the_Republic_of_Belarus_took_part_in_the_Open_Tournament/photo_2023-03-26_21-34-54.jpg",
+        "images/novosti/2023_The_combined_team_of_the_Minsk_diocese_of_the_BOC_and_the_Military_Academy_of_the_Republic_of_Belarus_took_part_in_the_Open_Tournament/photo_2023-03-26_21-34-54.jpg",
+    ]
+
+    def test_parse_url(self):
+        parsed_urls = [self.service().parse_url(url) for url in TEST_PARSE_ABSOLUTE_TO_DOMESTIC_URL_SERVICE]
+        self.assertListEqual(parsed_urls, self.TEST_PARSED_ABSOLUTE_TO_DOMESTIC_URL_SERVICE)

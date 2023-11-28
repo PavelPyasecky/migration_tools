@@ -1,7 +1,7 @@
 from datetime import datetime
 
-from sqlalchemy import String, Integer, ForeignKey, DateTime, Table, Column
-from sqlalchemy.dialects.mysql import MEDIUMTEXT, JSON
+from sqlalchemy import String, Integer, ForeignKey, DateTime, Table, Column, Text
+from sqlalchemy.dialects.mysql import JSON
 from sqlalchemy.orm import mapped_column, registry, relationship, DeclarativeBase
 
 
@@ -43,7 +43,7 @@ class NewsContent:
 
     news_content_id = mapped_column(Integer, primary_key=True)
     title = mapped_column(String(255))
-    text = mapped_column(MEDIUMTEXT)
+    text = mapped_column(Text)
 
     created_date = mapped_column(DateTime, default=datetime.utcnow)
     created_by_id = mapped_column(Integer)
