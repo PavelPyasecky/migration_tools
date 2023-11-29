@@ -2,7 +2,8 @@ import logging
 import math
 from datetime import datetime
 
-from sqlalchemy import select, insert, update, delete, not_
+from sqlalchemy import select, insert, update, delete, not_, create_engine
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.sql.functions import count
 
 from db import models
@@ -15,7 +16,7 @@ logging.basicConfig()
 logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)
 
 
-DEBUG_MODE = True
+DEBUG_MODE = False
 TEST_DEFAULT_AFFECTED_ROW_COUNT = 2
 
 BATCH_SIZE = 25
@@ -85,6 +86,14 @@ class NewsContentService(SessionMixin):
         news_content_stmt = select(models.NewsContent).order_by(models.NewsContent.news_content_id.desc()).offset(offset)
         return self.session.scalars(news_content_stmt).all()
 
+    def get_news_contents_from_interval(self, start_id, end_id):
+        news_content_stmt = select(models.NewsContent).where(
+            models.NewsContent.news_content_id >= start_id,
+            models.NewsContent.news_content_id <= end_id
+        ).order_by(
+            models.NewsContent.news_content_id.desc())
+        return self.session.scalars(news_content_stmt).all()
+
     def _DEBUG_get_news_contents(self):
         news_content_stmt = select(models.NewsContent).order_by(models.NewsContent.news_content_id.desc()).limit(
             TEST_DEFAULT_AFFECTED_ROW_COUNT)
@@ -115,8 +124,11 @@ class NewsContentService(SessionMixin):
 
 
 class DbPreparingService:
-    def prepare_db_data(self, engine):
-        with DBSessionManager(engine) as current_session:
+    def __init__(self, engine):
+        self.engine = engine
+
+    def prepare_db_data(self):
+        with DBSessionManager(self.engine) as current_session:
             self._delete_duplicated_news_or_extra_staff(current_session)
             news_service = NewsContentService(current_session)
 
@@ -174,22 +186,38 @@ class DbDataModifier:
     DEFAULT_USER_ID = 1
     TEST_DEFAULT_AFFECTED_ROW_COUNT = 2
 
-    def process_db(self, engine):
-        DbPreparingService().prepare_db_data(engine)
-        self._modify_db_data(engine)
+    def __init__(self, engine):
+        self.engine = engine
 
-    def _modify_db_data(self, engine):
+    def process_db(self):
+        try:
+            DbPreparingService(self.engine).prepare_db_data()
+            self._modify_db_data()
+        except OperationalError as e:
+            logging.error(f'Database Error: {e}')
+
+    def modify_db_data_for_entities(self, engine, start_news_content_id, end_news_content_id):
         with DBSessionManager(engine) as current_session:
+            news_service = NewsContentService(current_session)
+            news_contents = news_service.get_news_contents_from_interval(start_news_content_id, end_news_content_id)
+            self._modify_db_data_partial(news_contents, current_session)
+
+            current_session.commit()
+
+    def _modify_db_data(self, ):
+        with DBSessionManager(self.engine) as current_session:
             news_service = NewsContentService(current_session)
 
             total_news_count = news_service.get_news_contents_count()
             iter_times = math.ceil(total_news_count / BATCH_SIZE)
 
-            for _ in range(iter_times):
+        for _ in range(iter_times):
+            with DBSessionManager(self.engine) as current_session:
+                news_service = NewsContentService(current_session)
                 news_contents = news_service.get_news_contents(BATCH_SIZE)
                 self._modify_db_data_partial(news_contents, current_session)
 
-            current_session.commit()
+                current_session.commit()
 
     def _modify_db_data_partial(self, news_contents, current_session):
         for news_content in news_contents:

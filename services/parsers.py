@@ -16,7 +16,7 @@ class ParseTextFromHtmlService:
 
     parser = 'html.parser'
     youtube_urls_re = r'^((https?\:\/\/)?((www\.)?youtube\.com|youtu\.be)\/.+)$'
-    youtube_tag_re = r'{youtube}([\d\w]+){\/youtube}'
+    youtube_tag_re = r'{youtube}([\d\w\-\_]+){\/youtube}'
 
     def __init__(self, text: str):
         self.text = text
@@ -61,10 +61,14 @@ class ParseTextFromHtmlService:
         self.parsed_youtube_urls += self._get_youtube_urls_from_tags()
         return self.parsed_youtube_urls
 
-    def _get_youtube_urls(self):
-        link_urls = self._get_source_of_url_tag('a')
-        youtube_pattern = re.compile(self.youtube_urls_re)
-        return [link for link in link_urls if youtube_pattern.search(link)]
+    def _get_youtube_urls(self) -> list:
+        try:
+            link_urls = self._get_source_of_url_tag('a')
+            youtube_pattern = re.compile(self.youtube_urls_re)
+            return [link for link in link_urls if youtube_pattern.search(link)]
+        except TypeError as e:
+            logger.error(f'Error getting youtube urls: {e}')
+            return []
 
     def _get_youtube_urls_from_tags(self) -> list:
         codes = re.findall(self.youtube_tag_re, self.text)
@@ -83,5 +87,5 @@ class ParseAbsoluteToDomesticUrlService:
         try:
             return url_pattern.search(unquote(img_url))[1]
         except TypeError as e:
-            logger.error(f'Parse Absolute To Domestic Url error: {e}')
-            return ''
+            logger.info(f'Parse Absolute To Domestic Url have already received domestic Url.')
+            return img_url
